@@ -1,4 +1,4 @@
-from telethon import TelegramClient
+from telethon import TelegramClient, events
 import asyncio
 import os
 
@@ -11,20 +11,46 @@ interval = int(os.getenv("TG_INTERVAL", "5"))
 
 client = TelegramClient("user_session", api_id, api_hash)
 
+stop_flag = False  # will become True if the person replies
+
+
+async def check_reply(event):
+    global stop_flag
+    # Only react if message is from the target chat and not from you
+    sender = await event.get_sender()
+    me = await client.get_me()
+    if sender.id != me.id:
+        chat = await event.get_chat()
+        if str(chat.id) == str((await client.get_entity(target)).id):
+            print(f"Received reply from {target}: {event.message.message}")
+            stop_flag = True
+
+
 async def main():
+    global stop_flag
     await client.start(phone=phone)
-    user = await client.get_me()
-    print(f"Logged in as {user.first_name}")
+    me = await client.get_me()
+    print(f"Logged in as {me.first_name}")
+
+    # Listen for incoming messages from the target
+    client.add_event_handler(check_reply, events.NewMessage(from_users=None))
 
     try:
-        while True:
-            await client.send_message(target, message)
+        entity = await client.get_entity(target)
+        print(f"Target found: {entity.id}")
+
+        while not stop_flag:
+            await client.send_message(entity, message)
             print(f"Sent: {message}")
             await asyncio.sleep(interval)
+
+        print("Stopped sending — target replied.")
     except KeyboardInterrupt:
-        print("Stopped by user.")
+        print("Stopped manually.")
     finally:
         await client.disconnect()
 
+
 if __name__ == "__main__":
     asyncio.run(main())
+    
